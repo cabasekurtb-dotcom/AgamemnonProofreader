@@ -2,28 +2,27 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import re
+import html
 
 # ---- SETUP ----
-# Replace the emoji with a URL to your custom logo image
-# Example: page_icon="https://yourdomain.com/agamemnon_logo.png"
-st.set_page_config(page_title="Agamemnon Proofreader",
-                   page_icon="https://github.com/cabasekurtb-dotcom/AgamemnonProofreader/blob/main/openart-image_qep0Q1ob_1760730245491_raw.png?raw=true",
-                   layout="wide")
+st.set_page_config(
+    page_title="Agamemnon Proofreader",
+    page_icon="https://github.com/cabasekurtb-dotcom/AgamemnonProofreader/blob/main/openart-image_qep0Q1ob_1760730245491_raw.png?raw=true",
+    layout="wide"
+)
 
 st.title("Agamemnon Proofreader")
 st.caption("Property of Kurt 'Isko' Cabase")
 
-# ✅ SAFELY LOAD API KEY FROM STREAMLIT SECRETS
+# ---- LOAD API KEY ----
 API_KEY = st.secrets["general"]["GEMINI_API_KEY"]
-
-# Configure Gemini
 genai.configure(api_key=API_KEY)
 
 MODEL_NAME = "models/gemini-2.5-flash"
 
+# ---- PROOFREAD FUNCTION ----
 def proofread_text(text):
     model = genai.GenerativeModel(MODEL_NAME)
-
     prompt = f"""
     You are a professional proofreader. 
     Return ONLY valid JSON with this structure:
@@ -34,15 +33,13 @@ def proofread_text(text):
         "reason": "..."
       }}
     ]
-
     Text:
     {text}
     """
-
     response = model.generate_content(prompt)
     raw = response.text.strip()
 
-    # Extract JSON from any surrounding text safely
+    # Extract JSON safely
     match = re.search(r'\[.*\]', raw, re.S)
     if match:
         raw = match.group(0)
@@ -55,21 +52,46 @@ def proofread_text(text):
 # ---- INTERFACE ----
 text_input = st.text_area("️ Paste your story or passage below:", height=300)
 
-if st.button("Proofread"):
-    if not text_input.strip():
-        st.warning("Please enter some text first!")
-    else:
-        with st.spinner("Analyzing text..."):
-            results = proofread_text(text_input)
-        if results:
-            st.success("Proofreading complete!")
+# Buttons container
+col1, col2, col3 = st.columns([1,1,1])
+proofread_done = False
+results = []
 
-            for r in results:
-                with st.container():
-                    st.markdown(f"""
-                    **Original:** <span style='color:#b71c1c'>{r["original"]}</span><br>
-                    **Corrected:** <span style='color:#1b5e20'>{r["corrected"]}</span><br>
-                    <i>{r["reason"]}</i>
-                    """, unsafe_allow_html=True)
+with col1:
+    if st.button("Proofread"):
+        if not text_input.strip():
+            st.warning("Please enter some text first!")
         else:
-            st.error("No corrections found or model returned invalid data.")
+            with st.spinner("Analyzing text..."):
+                results = proofread_text(text_input)
+                if results:
+                    st.success("Proofreading complete!")
+                    proofread_done = True
+                else:
+                    st.error("No corrections found or model returned invalid data.")
+
+with col2:
+    if st.button("Clear Highlights"):
+        text_input = ""
+        results = []
+        proofread_done = False
+
+with col3:
+    if st.button("Copy Edits"):
+        if results:
+            edits_text = "\n".join([f"{r['original']} -> {r['corrected']} ({r['reason']})" for r in results])
+            st.text_area("Copy the edits below:", value=edits_text, height=200)
+        else:
+            st.warning("No edits to copy. Proofread first!")
+
+# ---- DISPLAY ORIGINAL TEXT WITH HIGHLIGHTS ----
+if proofread_done:
+    highlighted_text = html.escape(text_input)
+
+    for edit in results:
+        pattern = re.escape(edit["original"])
+        replacement = f"<span style='background-color:#ffeb3b;' title='{edit['reason']}'>{edit['original']}</span>"
+        highlighted_text = re.sub(pattern, replacement, highlighted_text)
+
+    st.markdown("### 📄 Original Text with Highlights")
+    st.markdown(highlighted_text, unsafe_allow_html=True)
