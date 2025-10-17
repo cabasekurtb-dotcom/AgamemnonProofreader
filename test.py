@@ -9,11 +9,11 @@ st.set_page_config(page_title="Agamemnon Proofreader", page_icon="📜", layout=
 st.title("Agamemnon Proofreader")
 st.caption("Property of Kurt 'Isko' Cabase")
 
-API_KEY = st.secrets.get("AIzaSyDOEw9YvNAruiy5vi-N7Oc_eT-NH5a19nM", None)  # safer for deployment
-if not API_KEY:
-    st.warning("⚠ Please add your Gemini API key in Streamlit Secrets.")
-else:
-    genai.configure(api_key=API_KEY)
+# ✅ SAFELY LOAD API KEY FROM STREAMLIT SECRETS
+API_KEY = st.secrets["general"]["GEMINI_API_KEY"]
+
+# Configure Gemini
+genai.configure(api_key=API_KEY)
 
 MODEL_NAME = "models/gemini-2.5-flash"
 
@@ -21,7 +21,8 @@ def proofread_text(text):
     model = genai.GenerativeModel(MODEL_NAME)
 
     prompt = f"""
-    You are a proofreader. Analyze the following text and return ONLY valid JSON:
+    You are a professional proofreader. 
+    Return ONLY valid JSON with this structure:
     [
       {{
         "original": "...",
@@ -37,6 +38,7 @@ def proofread_text(text):
     response = model.generate_content(prompt)
     raw = response.text.strip()
 
+    # Extract JSON from any surrounding text safely
     match = re.search(r'\[.*\]', raw, re.S)
     if match:
         raw = match.group(0)
@@ -66,4 +68,4 @@ if st.button("Proofread"):
                     <i>{r["reason"]}</i>
                     """, unsafe_allow_html=True)
         else:
-            st.error(" No corrections found or model returned invalid data.")
+            st.error("No corrections found or model returned invalid data.")
