@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import re
-import html
 
 # ---- SETUP ----
 st.set_page_config(
@@ -84,14 +83,16 @@ with col3:
         else:
             st.warning("No edits to copy. Proofread first!")
 
-# ---- DISPLAY ORIGINAL TEXT WITH HIGHLIGHTS ----
+# ---- DISPLAY ORIGINAL TEXT WITH HIGHLIGHTS AND TOOLTIPS ----
 if proofread_done:
-    highlighted_text = html.escape(text_input)
+    # Escape text but preserve line breaks
+    highlighted_text = text_input.replace("\n", "<br>")
 
+    # Apply highlights with tooltip
     for edit in results:
-        pattern = re.escape(edit["original"])
+        escaped_original = re.escape(edit["original"])
         replacement = f"<span style='background-color:#ffeb3b;' title='{edit['reason']}'>{edit['original']}</span>"
-        highlighted_text = re.sub(pattern, replacement, highlighted_text)
+        highlighted_text = re.sub(escaped_original, replacement, highlighted_text)
 
-    st.markdown("### 📄 Original Text with Highlights")
+    st.markdown("### Original Text with Highlights")
     st.markdown(highlighted_text, unsafe_allow_html=True)
