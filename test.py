@@ -4,7 +4,11 @@ import json
 import re
 
 # ---- SETUP ----
-st.set_page_config(page_title="Agamemnon Proofreader", page_icon="📜", layout="wide")
+# Replace the emoji with a URL to your custom logo image
+# Example: page_icon="https://yourdomain.com/agamemnon_logo.png"
+st.set_page_config(page_title="Agamemnon Proofreader",
+                   page_icon="https://github.com/cabasekurtb-dotcom/AgamemnonProofreader/blob/main/openart-image_qep0Q1ob_1760730245491_raw.png?raw=true",
+                   layout="wide")
 
 st.title("Agamemnon Proofreader")
 st.caption("Property of Kurt 'Isko' Cabase")
@@ -58,7 +62,7 @@ if st.button("Proofread"):
         with st.spinner("Analyzing text..."):
             results = proofread_text(text_input)
         if results:
-            st.success(" Proofreading complete!")
+            st.success("Proofreading complete!")
 
             for r in results:
                 with st.container():
