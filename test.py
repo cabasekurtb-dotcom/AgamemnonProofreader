@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import re
+import html
 
 # ---- SETUP ----
 st.set_page_config(
@@ -85,18 +86,22 @@ with col3:
 
 # ---- DISPLAY ORIGINAL TEXT WITH HIGHLIGHTS AND TOOLTIPS ----
 if proofread_done:
-    paragraphs = text_input.split("\n\n")  # Split into paragraphs
-    highlighted_paragraphs = []
+    highlighted_text = text_input
 
-    for para in paragraphs:
-        highlighted_para = para
-        for edit in results:
-            if edit["original"] in highlighted_para:
-                escaped_original = re.escape(edit["original"])
-                replacement = f"<span style='background-color:#ffeb3b;' title='{edit['reason']}'>{edit['original']}</span>"
-                highlighted_para = re.sub(escaped_original, replacement, highlighted_para)
-        highlighted_paragraphs.append(highlighted_para)
+    for edit in results:
+        # Escape regex special characters
+        escaped_original = re.escape(edit["original"])
 
-    final_text = "<br><br>".join(highlighted_paragraphs)
+        # Escape tooltip text for HTML
+        tooltip_safe = html.escape(edit["reason"].replace("\n", " "))
+
+        replacement = f"<span style='background-color:#ffeb3b;' title='{tooltip_safe}'>{edit['original']}</span>"
+
+        # Replace all exact matches
+        highlighted_text = re.sub(escaped_original, replacement, highlighted_text)
+
+    # Preserve paragraphs
+    highlighted_text = highlighted_text.replace("\n", "<br>")
+
     st.markdown("### Original Text with Highlights")
-    st.markdown(final_text, unsafe_allow_html=True)
+    st.markdown(highlighted_text, unsafe_allow_html=True)
