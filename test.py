@@ -85,14 +85,18 @@ with col3:
 
 # ---- DISPLAY ORIGINAL TEXT WITH HIGHLIGHTS AND TOOLTIPS ----
 if proofread_done:
-    # Escape text but preserve line breaks
-    highlighted_text = text_input.replace("\n", "<br>")
+    paragraphs = text_input.split("\n\n")  # Split into paragraphs
+    highlighted_paragraphs = []
 
-    # Apply highlights with tooltip
-    for edit in results:
-        escaped_original = re.escape(edit["original"])
-        replacement = f"<span style='background-color:#ffeb3b;' title='{edit['reason']}'>{edit['original']}</span>"
-        highlighted_text = re.sub(escaped_original, replacement, highlighted_text)
+    for para in paragraphs:
+        highlighted_para = para
+        for edit in results:
+            if edit["original"] in highlighted_para:
+                escaped_original = re.escape(edit["original"])
+                replacement = f"<span style='background-color:#ffeb3b;' title='{edit['reason']}'>{edit['original']}</span>"
+                highlighted_para = re.sub(escaped_original, replacement, highlighted_para)
+        highlighted_paragraphs.append(highlighted_para)
 
+    final_text = "<br><br>".join(highlighted_paragraphs)
     st.markdown("### Original Text with Highlights")
-    st.markdown(highlighted_text, unsafe_allow_html=True)
+    st.markdown(final_text, unsafe_allow_html=True)
