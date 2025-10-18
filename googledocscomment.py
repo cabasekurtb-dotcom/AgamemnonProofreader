@@ -19,19 +19,12 @@ st.caption("Applies Agamemnon edits as Google Docs comments")
 # Input: Google Docs URL
 doc_url = st.text_input("Paste your Google Docs URL here:")
 
-
 def get_doc_id(url):
     """Extract Google Docs ID from URL"""
     match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
     if match:
         return match.group(1)
     return None
-
-
-DOCUMENT_ID = get_doc_id(doc_url)
-
-if doc_url and not DOCUMENT_ID:
-    st.error("Could not extract Google Docs ID. Check the URL.")
 
 # Load edits JSON
 try:
@@ -41,8 +34,11 @@ except Exception as e:
     st.error(f"Error loading edits: {e}")
     edits = []
 
-if st.button("Apply Comments") and DOCUMENT_ID:
-    if not edits:
+if st.button("Apply Comments"):
+    DOCUMENT_ID = get_doc_id(doc_url)
+    if not DOCUMENT_ID:
+        st.error("Could not extract Google Docs ID. Check the URL.")
+    elif not edits:
         st.warning("No edits found to apply!")
     else:
         try:
@@ -75,6 +71,9 @@ if st.button("Apply Comments") and DOCUMENT_ID:
             # Chunk edits
             chunks = [edits[i:i + CHUNK_SIZE] for i in range(0, len(edits), CHUNK_SIZE)]
 
+            # Track unmatched edits
+            unmatched_edits = []
+
             # Apply comments
             for chunk_num, chunk in enumerate(chunks, 1):
                 requests = []
@@ -83,7 +82,12 @@ if st.button("Apply Comments") and DOCUMENT_ID:
                     corrected_text = edit.get("corrected", "")
                     reason = edit.get("reason", "")
 
-                    for match in re.finditer(re.escape(original_text), flat_text):
+                    matches = list(re.finditer(re.escape(original_text), flat_text))
+                    if not matches:
+                        unmatched_edits.append(edit)
+                        continue
+
+                    for match in matches:
                         start_index = match.start()
                         end_index = match.end()
 
@@ -108,10 +112,15 @@ if st.button("Apply Comments") and DOCUMENT_ID:
                         documentId=DOCUMENT_ID,
                         body={'requests': requests}
                     ).execute()
-                    st.info(f"Chunk {chunk_num}/{len(chunks)} applied with {len(requests) // 2} comments.")
+                    st.info(f"Chunk {chunk_num}/{len(chunks)} applied with {len(requests)//2} comments.")
                     time.sleep(PAUSE_BETWEEN_CHUNKS)
 
             st.success("All edits applied successfully!")
+
+            if unmatched_edits:
+                st.warning(f"{len(unmatched_edits)} edits could not be found in the document:")
+                for ue in unmatched_edits:
+                    st.text(f"{ue['original']} -> {ue['corrected']} ({ue['reason']})")
 
         except Exception as e:
             st.error(f"Error applying edits: {e}")
