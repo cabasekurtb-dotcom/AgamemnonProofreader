@@ -94,8 +94,6 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
             continue
 
             # --- Find Match in Document (using the simple first match) ---
-        # Note: We use re.search which only finds the first match. This is important
-        # because subsequent edits will change the document and invalidate later matches.
         match = re.search(re.escape(search_term), searchable_text)
 
         if not match:
@@ -110,8 +108,6 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
         api_end_index = -1
         current_flat_pos = 0
 
-        # This complex loop maps the simple string index (flat_start/flat_end)
-        # back to the Docs API's structural indices (api_start_index/api_end_index)
         for item in flat_text_with_indices:
             text_len = len(item['text'])
 
@@ -129,44 +125,52 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
             current_flat_pos += text_len
 
         if api_start_index == -1 or api_end_index == -1 or api_start_index >= api_end_index:
-            # This indicates an indexing error; skip this edit to prevent corruption
             unmatched_edits.append(edit)
             continue
 
             # --- Create Suggestion Requests (Batch Update) ---
 
+        # KEY FIX: The 'suggestionState' is what forces the highlight/suggestion mode.
+        suggestion_state_config = {'suggestionState': 'SUGGESTED'}
+
         if action_type == "Deletion" or action_type == "Replacement":
             # 1. Delete the original text (appears as red strikethrough)
-            all_requests.append({
+            delete_request = {
                 'deleteContentRange': {
                     'range': {
                         'startIndex': api_start_index,
                         'endIndex': api_end_index
-                    }
+                    },
+                    **suggestion_state_config  # <-- ADDED THIS
                 }
-            })
+            }
+            all_requests.append(delete_request)
 
             # 2. Insert the corrected text (appears as green underline)
             if corrected_text:
-                all_requests.append({
+                insert_request = {
                     'insertText': {
                         'location': {
                             'index': api_start_index
                         },
-                        'text': corrected_text
+                        'text': corrected_text,
+                        **suggestion_state_config  # <-- ADDED THIS
                     }
-                })
+                }
+                all_requests.append(insert_request)
 
         elif action_type == "Insertion":
             # Insert *before* the matched text
-            all_requests.append({
+            insert_request = {
                 'insertText': {
                     'location': {
                         'index': api_start_index
                     },
-                    'text': corrected_text
+                    'text': corrected_text,
+                    **suggestion_state_config  # <-- ADDED THIS
                 }
-            })
+            }
+            all_requests.append(insert_request)
 
         applied_count += 1
 
@@ -252,22 +256,71 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
 
             request_chunks = [all_requests[i:i + CHUNK_SIZE] for i in range(0, len(all_requests), CHUNK_SIZE)]
 
-            # --- SAFE MODE: DO NOT EXECUTE ---
-            st.warning("Running in **SAFE MODE**. API execution is blocked.")
-            st.info(f"Requests generated for {len(all_requests)} changes. Review them below.")
+            # 2. Execute Batches
+            chunk_success_count = 0
 
-            st.subheader("Simulated API Requests (Review Indices)")
-            st.json(all_requests)
+            for chunk_num, request_chunk in enumerate(request_chunks, 1):
+                progress_value = 5 + int(90 * (chunk_num / len(request_chunks)))
+                progress_bar.progress(progress_value,
+                                      text=f"Applying batch {chunk_num}/{len(request_chunks)} (Attempt {retry_attempt + 1})...")
 
-            st.markdown("---")
-            st.error(
-                "To ENABLE EXECUTION: Find the `docs_service.documents().batchUpdate` line in the Python file and UNCOMMENT it.")
+                try:
+                    # --- EXECUTION RE-ENABLED ---
+                    docs_service.documents().batchUpdate(
+                        documentId=DOCUMENT_ID,
+                        body={'requests': request_chunk, 'writeControl': {'targetRevisionId': current_revision_id}}
+                    ).execute()
+                    # --- EXECUTION RE-ENABLED ---
 
+                    status_placeholder.info(f"Batch {chunk_num} succeeded. Applied {len(request_chunk)} API requests.")
+                    chunk_success_count += 1
+                    time.sleep(PAUSE_BETWEEN_CHUNKS)
+
+                except HttpError as e:
+                    # Check for the specific revision conflict error (Error 400 with revision message)
+                    if "Cannot write to revision" in str(e):
+                        status_placeholder.warning(
+                            f"Revision Conflict Detected in Batch {chunk_num}! Attempting to re-sync and retry..."
+                        )
+                        # Re-fetch the latest content and revision ID
+                        searchable_text, flat_text_with_indices, current_revision_id = get_text_and_index_map(
+                            docs_service, DOCUMENT_ID
+                        )
+
+                        raise RuntimeError("REVISION_CONFLICT")
+                    else:
+                        raise e
+
+            if chunk_success_count == len(request_chunks):
+                total_applied += current_applied
+                break
+
+            total_applied += chunk_success_count * CHUNK_SIZE  # Estimate applied before conflict
+
+        # --- 5. Cleanup and Reporting ---
+
+        progress_bar.empty()
+        st.balloons()
+        st.success(f"Operation complete! Total {total_applied} suggestions successfully created.")
+
+        if unmatched_edits:
+            st.subheader("⚠️ Unmatched Edits")
+            st.warning(
+                f"{len(unmatched_edits)} original/search phrases could not be found or indices could not be reliably determined.")
+            for ue in unmatched_edits:
+                st.text(f"Original: '{ue.get('original')}' -> Corrected: '{ue.get('corrected')}'")
+
+    except RuntimeError as e:
+        if str(e) == "REVISION_CONFLICT":
+            if retry_attempt + 1 < MAX_RETRIES:
+                status_placeholder.info(f"Retrying application... Attempt {retry_attempt + 2}/{MAX_RETRIES}.")
+            else:
+                progress_bar.empty()
+                st.error(
+                    f"Operation failed after {MAX_RETRIES} attempts due to persistent revision conflicts. Please try again when the document is stable.")
+        else:
             progress_bar.empty()
-            st.success(f"Safe Mode Complete. {len(all_requests)} changes were simulated.")
-            st.stop()  # Exit after simulation to prevent unintended execution
-            # --- END SAFE MODE ---
-
+            st.exception(f"A major error occurred during processing. Error: {e}")
     except Exception as e:
         progress_bar.empty()
         st.exception(f"A major error occurred during processing. Error: {e}")
@@ -349,4 +402,3 @@ if st.button("4. Clear All Suggestions/Comments"):
     finally:
         if SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
             os.remove(SERVICE_ACCOUNT_FILE)
-    
