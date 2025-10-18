@@ -19,6 +19,7 @@ try:
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8') as f:
             f.write(json_str)
             SERVICE_ACCOUNT_FILE = f.name
+        # Note: The service account email will be read from the SERVICE_ACCOUNT_FILE later
     else:
         st.error("Authentication setup error: 'google_docs' secret is missing or empty.")
 except Exception as e:
@@ -26,8 +27,8 @@ except Exception as e:
 
 # Google API Scopes
 SCOPES = [
-    "[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)",
-    "[https://www.googleapis.com/auth/documents](https://www.googleapis.com/auth/documents)"
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/documents"
 ]
 CHUNK_SIZE = 20
 PAUSE_BETWEEN_CHUNKS = 2
@@ -44,6 +45,10 @@ def get_doc_id(url):
 
 st.title("Google Docs Comment Applier (Drive API)")
 st.caption("Applies proofreading edits as **comments** for Addition, Removal, or Replacement.")
+
+# IMPORTANT PERMISSIONS REMINDER
+st.error(
+    "🚨 IMPORTANT: To prevent 'No access token' errors, you MUST share your Google Doc with the Service Account email address. This email is provided in your secrets.")
 
 # 1. Document URL Input
 doc_url = st.text_input("1. Paste your Google Docs URL here:")
@@ -64,7 +69,7 @@ if uploaded_file is not None:
         edits = json.load(uploaded_file)
         st.success(f"Successfully loaded {len(edits)} edits from '{uploaded_file.name}'.")
         # Display the first few items for confirmation
-        st.subheader("Edit Preview:")
+        st.subheader("Edit Preview (First 1 item):")
         st.json(edits[0] if edits else {})
     except Exception as e:
         st.error(f"Error reading the uploaded JSON file. Please ensure it is valid JSON. Error: {e}")
@@ -140,6 +145,7 @@ if st.button("3. Apply Edits as Comments"):
                     continue  # Skip malformed edits
 
                 # Find all matches
+                # We use re.escape to handle special characters in the text
                 matches = list(re.finditer(re.escape(search_term), flat_text))
 
                 if not matches:
@@ -147,7 +153,6 @@ if st.button("3. Apply Edits as Comments"):
                     continue
 
                 # Apply comment for the first match found (to avoid excessive duplicates)
-                # You might need to adjust logic here if you expect duplicates
                 match = matches[0]
 
                 matched_text_snippet = match.group(0).strip()
@@ -163,15 +168,17 @@ if st.button("3. Apply Edits as Comments"):
 
                 # Execute the comment creation via Drive API
                 try:
+                    # FIX for the "The 'fields' parameter is required" error:
                     drive_service.comments().create(
                         fileId=DOCUMENT_ID,
                         body=comment_body,
-                        fields='id'
+                        fields='id'  # This is required by the Drive API
                     ).execute()
                     comment_requests_in_chunk += 1
                     applied_count += 1
                 except Exception as create_error:
-                    status_placeholder.error(f"Failed to create comment for '{search_term}'. Error: {create_error}")
+                    status_placeholder.error(
+                        f"Failed to create comment for '{search_term}'. Please check doc sharing permissions. Error: {create_error}")
 
             # Update progress bar and status after each chunk
             progress_value = 5 + int(95 * (chunk_num / len(chunks)))
@@ -194,6 +201,7 @@ if st.button("3. Apply Edits as Comments"):
 
     except Exception as e:
         progress_bar.empty()
+        # The 'No access token' error is caught here
         st.exception(
             f"A major error occurred during processing. Please check the permissions or file content. Error: {e}")
     finally:
