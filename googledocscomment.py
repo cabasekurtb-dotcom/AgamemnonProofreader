@@ -6,7 +6,7 @@ import time
 import streamlit as st
 
 # ---- CONFIG ----
-SERVICE_ACCOUNT_FILE = r"C:\Users\User\AppData\Roaming\BetterDiscord\themes\Downloads\gen-lang-client-0010323751-7a91111b14f4.json"
+SERVICE_ACCOUNT_FILE = r"C:\Users\User\Downloads\apikey067.json"
 SCOPES = ['https://www.googleapis.com/auth/documents']
 EDITS_JSON_FILE = 'edits.json'
 CHUNK_SIZE = 50
