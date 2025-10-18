@@ -1,0 +1,27 @@
+[
+    {
+        "original": "Mdm. Genevieve walks out.",
+        "corrected": "Mdm. Genevieve walked out.",
+        "reason": "Changed 'walks' to 'walked' to maintain consistent past tense with 'shouted'."
+    },
+    {
+        "original": "which flow down the hill on which it was built.",
+        "corrected": "which flowed down the hill on which it was built.",
+        "reason": "Changed 'flow' to 'flowed' to maintain consistent past tense with the surrounding narrative."
+    },
+    {
+        "original": "The suns light barely leaked",
+        "corrected": "The sun's light barely leaked",
+        "reason": "Corrected 'suns' to 'sun's' for proper possessive form."
+    },
+    {
+        "original": "Almost all Class J members was hanging by a thread",
+        "corrected": "Almost all Class J members were hanging by a thread",
+        "reason": "Changed 'was' to 'were' to correct subject-verb agreement. 'Members' is a plural subject."
+    },
+    {
+        "original": "one student who scratch his desk",
+        "corrected": "one student who scratched his desk",
+        "reason": "Changed 'scratch' to 'scratched' to maintain consistent past tense with the surrounding narrative."
+    }
+]
