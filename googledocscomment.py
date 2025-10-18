@@ -265,7 +265,7 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
 
             progress_bar.empty()
             st.success(f"Safe Mode Complete. {len(all_requests)} changes were simulated.")
-            return  # Exit after simulation to prevent unintended execution
+            st.stop()  # Exit after simulation to prevent unintended execution
             # --- END SAFE MODE ---
 
     except Exception as e:
@@ -349,3 +349,4 @@ if st.button("4. Clear All Suggestions/Comments"):
     finally:
         if SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
             os.remove(SERVICE_ACCOUNT_FILE)
+    
