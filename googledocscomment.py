@@ -74,6 +74,7 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
     unmatched_edits = []
     all_requests = []
     applied_count = 0
+    SUGGESTED_STATE = 'SUGGESTED'
 
     for edit in edits:
         original_text = edit.get("original", "").strip()
@@ -130,10 +131,6 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
 
             # --- Create Suggestion Requests (Batch Update) ---
 
-        # KEY FIX: The suggestion state must be nested in its own field (textSuggestionState/contentSuggestionState)
-        # and its value must be the SUGGESTION_STATE constant.
-        SUGGESTED_STATE = 'SUGGESTED'
-
         if action_type == "Deletion" or action_type == "Replacement":
             # 1. Delete the original text (appears as red strikethrough)
             delete_request = {
@@ -141,10 +138,10 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                     'range': {
                         'startIndex': api_start_index,
                         'endIndex': api_end_index
-                    },
-                    # CORRECT NESTING for deletion suggestions
-                    'contentSuggestionState': SUGGESTED_STATE
-                }
+                    }
+                },
+                # CORRECT PLACEMENT: At the request object level
+                'contentSuggestionState': SUGGESTED_STATE
             }
             all_requests.append(delete_request)
 
@@ -157,7 +154,7 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                         },
                         'text': corrected_text
                     },
-                    # CORRECT NESTING for insertion suggestions
+                    # CORRECT PLACEMENT: At the request object level
                     'textSuggestionState': SUGGESTED_STATE
                 }
                 all_requests.append(insert_request)
@@ -171,7 +168,7 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                     },
                     'text': corrected_text
                 },
-                # CORRECT NESTING for insertion suggestions
+                # CORRECT PLACEMENT: At the request object level
                 'textSuggestionState': SUGGESTED_STATE
             }
             all_requests.append(insert_request)
