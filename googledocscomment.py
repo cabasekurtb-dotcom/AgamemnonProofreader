@@ -74,12 +74,14 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
     unmatched_edits = []
     all_requests = []
     applied_count = 0
-    SUGGESTED_STATE = 'SUGGESTED'
 
-    for edit in edits:
+    for i, edit in enumerate(edits):
         original_text = edit.get("original", "").strip()
         corrected_text = edit.get("corrected", "").strip()
         reason = edit.get("reason", "")
+
+        # --- Suggestion ID for this specific edit ---
+        suggestion_id = f"suggestion-{i}"
 
         # --- Determine Action Type and Search Term ---
         if original_text and corrected_text:
@@ -140,8 +142,8 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                         'endIndex': api_end_index
                     }
                 },
-                # CORRECT PLACEMENT: At the request object level
-                'contentSuggestionState': SUGGESTED_STATE
+                # FINAL MECHANISM: Use suggested_deletion_ids to force suggestion mode
+                'suggestedDeletionIds': [suggestion_id]
             }
             all_requests.append(delete_request)
 
@@ -154,8 +156,8 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                         },
                         'text': corrected_text
                     },
-                    # CORRECT PLACEMENT: At the request object level
-                    'textSuggestionState': SUGGESTED_STATE
+                    # FINAL MECHANISM: Use suggested_insertion_ids to force suggestion mode
+                    'suggestedInsertionIds': [suggestion_id]
                 }
                 all_requests.append(insert_request)
 
@@ -168,8 +170,8 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                     },
                     'text': corrected_text
                 },
-                # CORRECT PLACEMENT: At the request object level
-                'textSuggestionState': SUGGESTED_STATE
+                # FINAL MECHANISM: Use suggested_insertion_ids to force suggestion mode
+                'suggestedInsertionIds': [suggestion_id]
             }
             all_requests.append(insert_request)
 
