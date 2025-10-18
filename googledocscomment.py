@@ -42,7 +42,7 @@ st.title("Google Docs Suggestion Applier (Docs API)")
 st.caption("Applies proofreading edits as **Suggestions** (Tracked Changes) with Highlights.")
 
 st.error(
-    "🚨 IMPORTANT: You MUST share your Google Doc with the Service Account email address to prevent authentication errors. (Share to agamemnon-proofreading-ai@gen-lang-client-0010323751).")
+    "🚨 IMPORTANT: You MUST share your Google Doc with the Service Account email address to prevent authentication errors. (The email is provided in your secrets configuration).")
 
 doc_url = st.text_input("1. Paste your Google Docs URL here:")
 DOCUMENT_ID = get_doc_id(doc_url)
@@ -64,7 +64,7 @@ if uploaded_file is not None:
         st.error(f"Error reading the uploaded JSON file. Please ensure it is valid JSON. Error: {e}")
         edits = []
 
-# 4. Action Button
+# 4. Action Button (Apply Suggestions)
 if st.button("3. Apply Edits as Suggestions (Highlights)"):
 
     # Validation Checks
@@ -88,69 +88,16 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
             SERVICE_ACCOUNT_FILE, scopes=SCOPES
         )
         docs_service = build('docs', 'v1', credentials=creds)
-        # We now only need the Docs service for BatchUpdate
 
         progress_bar.progress(5, text="Fetching document content...")
 
         # Get document content
         doc = docs_service.documents().get(documentId=DOCUMENT_ID).execute()
 
-        # --- Extracting the text content and index mapping is complex and skipped here ---
-        # --- The Docs API indices are based on the JSON structure, not flat text. ---
-        # --- We will use the simpler method of finding the index relative to the entire document. ---
-
-        # Get the full text content from the document (including control characters)
+        # Get the full text content from the document
         doc_text = docs_service.documents().get(documentId=DOCUMENT_ID, fields='body(content)').execute()
 
-
-        # This function extracts text runs and their starting indices
-        def extract_text_runs(content):
-            """Extracts text runs and their start/end indices relative to the document body."""
-            text_runs = []
-
-            # The body starts at index 1 and ends at the last index of the last element's end_index - 1
-            current_index = 1
-
-            for element in content:
-                if 'paragraph' in element:
-                    paragraph = element['paragraph']
-                    for element in paragraph.get('elements', []):
-                        start_index = element.get('startIndex', 0)
-                        end_index = element.get('endIndex', 0)
-
-                        if 'textRun' in element:
-                            text = element['textRun'].get('content', '')
-                            # Add run details (start index relative to doc body)
-                            text_runs.append({
-                                'text': text,
-                                'startIndex': start_index,
-                                'endIndex': end_index
-                            })
-                            current_index = end_index
-                        elif 'autoText' in element:
-                            # Handle placeholders like page number, which don't have textRun
-                            current_index = end_index
-            return text_runs
-
-
-        text_runs = extract_text_runs(doc_text['body']['content'])
-
-        # Concatenate text and build a flat map for search purposes
-        flat_doc_text = ""
-        index_map = []  # Maps flat index to Docs API index
-
-        # Note: Docs API indices are 1-based and based on the document structure.
-        # This mapping is complex, so we will use the simpler, though slightly less precise,
-        # approach of finding the match in the *raw text* and mapping back to the known
-        # indices from the content structure, assuming the document hasn't been heavily edited
-        # outside of the text runs.
-
-        # The key is to find the START index of the element that contains the match.
-        # This is a robust way to avoid complex index calculation.
-
         # Simplified approach: Use the document JSON indices directly for search
-        # We will build a single string and find the match, then relate it back to the indices.
-
         # Rebuild the simple flat text and indices map
         flat_text_with_indices = []  # Stores (text, start_index, end_index) tuples
         for element in doc_text['body']['content']:
@@ -173,10 +120,7 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
 
         unmatched_edits = []
         applied_count = 0
-        total_edits = len(edits)
         status_placeholder = st.empty()
-
-        # We will collect all requests in one big list and batch them up.
         all_requests = []
 
         for edit in edits:
@@ -188,7 +132,6 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
             if original_text and corrected_text:
                 action_type = "Replacement"
                 search_term = original_text
-                # Replacement requires Delete + Insert. We will just use Replace.
             elif original_text and not corrected_text:
                 action_type = "Deletion"
                 search_term = original_text
@@ -196,10 +139,9 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
                 action_type = "Insertion"
                 search_term = corrected_text
             else:
-                continue  # Skip malformed edits
+                continue
 
-            # --- Find Match in Document ---
-            # Use a simple regex search on the flat text to get start/end positions
+                # --- Find Match in Document ---
             match = re.search(re.escape(search_term), searchable_text)
 
             if not match:
@@ -210,26 +152,17 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
             flat_start = match.start()
             flat_end = match.end()
 
-            # Find the actual Docs API indices (which are relative to the document structure)
-
-            # This requires a more precise utility that we don't have here.
-            # For simplicity, we will assume a 1-to-1 character index mapping,
-            # which is true for text within TextRuns, but fails for structural characters (newline/breaks).
-
-            # A simple approximation:
             api_start_index = -1
             api_end_index = -1
             current_flat_pos = 0
 
             for item in flat_text_with_indices:
                 text_len = len(item['text'])
-                # If the flat start is within this element's text range
+
                 if api_start_index == -1 and flat_start >= current_flat_pos and flat_start < current_flat_pos + text_len:
-                    # Calculate the offset from the element's start
                     offset = flat_start - current_flat_pos
                     api_start_index = item['startIndex'] + offset
 
-                # If the flat end is within this element's text range
                 if api_end_index == -1 and flat_end > current_flat_pos and flat_end <= current_flat_pos + text_len:
                     offset = flat_end - current_flat_pos
                     api_end_index = item['startIndex'] + offset
@@ -241,13 +174,12 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
 
             if api_start_index == -1 or api_end_index == -1 or api_start_index >= api_end_index:
                 unmatched_edits.append(edit)
-                continue  # Cannot reliably determine indices
+                continue
 
-            # --- Create Suggestion Requests (Batch Update) ---
+                # --- Create Suggestion Requests (Batch Update) ---
 
             if action_type == "Deletion" or action_type == "Replacement":
                 # 1. Delete the original text (appears as red strikethrough)
-                # This request is only made if there is text to delete.
                 all_requests.append({
                     'deleteContentRange': {
                         'range': {
@@ -257,10 +189,8 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
                     }
                 })
 
-                # 2. Insert the corrected text at the start index (appears as green underline)
+                # 2. Insert the corrected text (appears as green underline)
                 if corrected_text:
-                    # If it's a replacement or insertion, insert the new text
-                    # Use the original starting index for replacement/insertion
                     all_requests.append({
                         'insertText': {
                             'location': {
@@ -271,7 +201,7 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
                     })
 
             elif action_type == "Insertion":
-                # If it's an insertion, we are inserting *before* the matched text, so use the start index
+                # Insert *before* the matched text
                 all_requests.append({
                     'insertText': {
                         'location': {
@@ -286,7 +216,6 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
         # --- 5. EXECUTE BATCH UPDATES ---
 
         if all_requests:
-            # Chunk the requests for safety and throttling avoidance
             request_chunks = [all_requests[i:i + CHUNK_SIZE] for i in range(0, len(all_requests), CHUNK_SIZE)]
 
             for chunk_num, request_chunk in enumerate(request_chunks, 1):
@@ -320,5 +249,77 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
         progress_bar.empty()
         st.exception(f"A major error occurred during processing. Error: {e}")
     finally:
+        if SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
+            os.remove(SERVICE_ACCOUNT_FILE)
+
+# --- NEW: CLEAR COMMENTS/SUGGESTIONS FUNCTIONALITY ---
+
+st.markdown("---")
+if st.button("4. Clear All Suggestions/Comments"):
+    if not DOCUMENT_ID:
+        st.error("Error: Could not extract Google Docs ID.")
+        st.stop()
+    if not SERVICE_ACCOUNT_FILE:
+        st.error("Error: Authentication setup failed.")
+        st.stop()
+
+    clear_progress = st.progress(0, text="Initializing deletion process...")
+
+    try:
+        # Initialize Credentials and Services (Need Drive API to list and delete comments)
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
+        drive_service = build('drive', 'v3', credentials=creds)
+
+        clear_progress.progress(25, text="Fetching all existing comments...")
+
+        # Fetch all comments (which includes comments created by suggestions)
+        # Use page token to get all pages
+        comments_list = []
+        page_token = None
+        while True:
+            response = drive_service.comments().list(
+                fileId=DOCUMENT_ID,
+                fields='nextPageToken, comments(id)',
+                pageToken=page_token,
+                pageSize=100
+            ).execute()
+
+            comments_list.extend(response.get('comments', []))
+            page_token = response.get('nextPageToken', None)
+            if page_token is None:
+                break
+
+        total_comments = len(comments_list)
+        if total_comments == 0:
+            st.info("No comments or suggestions found to clear.")
+            clear_progress.empty()
+            st.stop()
+
+        comments_deleted = 0
+
+        clear_progress.progress(50, text=f"Deleting {total_comments} comments...")
+
+        # Delete each comment
+        for i, comment in enumerate(comments_list):
+            drive_service.comments().delete(
+                fileId=DOCUMENT_ID,
+                commentId=comment['id']
+            ).execute()
+            comments_deleted += 1
+
+            progress_value = 50 + int(50 * ((i + 1) / total_comments))
+            clear_progress.progress(progress_value, text=f"Deleting comment {i + 1} of {total_comments}...")
+
+        st.success(f"✅ Successfully deleted {comments_deleted} comments/suggestions!")
+        clear_progress.empty()
+
+    except Exception as e:
+        st.exception(
+            f"Error while clearing comments: {e}. Please ensure the Service Account has 'Editor' permission on the document.")
+        clear_progress.empty()
+    finally:
+        # Clean up the temporary service account file
         if SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
             os.remove(SERVICE_ACCOUNT_FILE)
