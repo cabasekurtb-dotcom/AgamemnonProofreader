@@ -22,8 +22,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/documents"
 ]
 EDITS_JSON_FILE = "edits.json"  # Assumes this file is present alongside the script
-CHUNK_SIZE = 40  # Lowered chunk size as comment creation is slower than batchUpdate
-PAUSE_BETWEEN_CHUNKS = 3
+CHUNK_SIZE = 20  # Lowered chunk size as comment creation is slower than batchUpdate
+PAUSE_BETWEEN_CHUNKS = 2
 
 # ---- STREAMLIT UI ----
 st.title("Google Docs Comment Applier (Drive API)")
@@ -132,17 +132,15 @@ if st.button("Apply Edits as Comments"):
                         # Comment body (using Drive API)
                         comment_body = {
                             'content': comment_content,
-                            # Note: To fully anchor the comment to the text range,
-                            # you would need to use a complex 'anchor' object referencing
-                            # document element IDs and revision IDs. We are omitting that here
-                            # for simplicity, creating a clear, unanchored comment instead.
+                            # Note: Anchoring logic is omitted for stability.
                         }
 
                         # Execute the comment creation via Drive API
                         try:
                             drive_service.comments().create(
                                 fileId=DOCUMENT_ID,
-                                body=comment_body
+                                body=comment_body,
+                                fields='id'  # <--- THE CRITICAL FIX: DRIVE API REQUIRES 'fields'
                             ).execute()
                             comment_requests += 1
                             applied_count += 1
