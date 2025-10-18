@@ -130,8 +130,9 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
 
             # --- Create Suggestion Requests (Batch Update) ---
 
-        # KEY FIX: The 'suggestionState' is what forces the highlight/suggestion mode.
-        suggestion_state_config = {'suggestionState': 'SUGGESTED'}
+        # KEY FIX: The suggestion state must be nested in its own field (textSuggestionState/contentSuggestionState)
+        # and its value must be the SUGGESTION_STATE constant.
+        SUGGESTED_STATE = 'SUGGESTED'
 
         if action_type == "Deletion" or action_type == "Replacement":
             # 1. Delete the original text (appears as red strikethrough)
@@ -141,7 +142,8 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                         'startIndex': api_start_index,
                         'endIndex': api_end_index
                     },
-                    **suggestion_state_config  # <-- ADDED THIS
+                    # CORRECT NESTING for deletion suggestions
+                    'contentSuggestionState': SUGGESTED_STATE
                 }
             }
             all_requests.append(delete_request)
@@ -153,9 +155,10 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                         'location': {
                             'index': api_start_index
                         },
-                        'text': corrected_text,
-                        **suggestion_state_config  # <-- ADDED THIS
-                    }
+                        'text': corrected_text
+                    },
+                    # CORRECT NESTING for insertion suggestions
+                    'textSuggestionState': SUGGESTED_STATE
                 }
                 all_requests.append(insert_request)
 
@@ -166,9 +169,10 @@ def create_batch_requests(edits, searchable_text, flat_text_with_indices, st_pla
                     'location': {
                         'index': api_start_index
                     },
-                    'text': corrected_text,
-                    **suggestion_state_config  # <-- ADDED THIS
-                }
+                    'text': corrected_text
+                },
+                # CORRECT NESTING for insertion suggestions
+                'textSuggestionState': SUGGESTED_STATE
             }
             all_requests.append(insert_request)
 
@@ -265,12 +269,11 @@ if st.button("3. Apply Edits as Suggestions (Highlights)"):
                                       text=f"Applying batch {chunk_num}/{len(request_chunks)} (Attempt {retry_attempt + 1})...")
 
                 try:
-                    # --- EXECUTION RE-ENABLED ---
+                    # EXECUTION IS ENABLED
                     docs_service.documents().batchUpdate(
                         documentId=DOCUMENT_ID,
                         body={'requests': request_chunk, 'writeControl': {'targetRevisionId': current_revision_id}}
                     ).execute()
-                    # --- EXECUTION RE-ENABLED ---
 
                     status_placeholder.info(f"Batch {chunk_num} succeeded. Applied {len(request_chunk)} API requests.")
                     chunk_success_count += 1
